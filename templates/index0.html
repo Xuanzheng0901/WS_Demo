@@ -1,0 +1,212 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hans-CN">
+<head>
+    <meta charset="UTF-8">
+    <style>
+        @font-face {
+            font-family: 'NotoSerifSC';
+            src: url("./styles/NotoSerifSC.woff2") format('woff2');
+            font-weight: normal;
+            font-style: normal;
+        }
+        body *{font-family: 'NotoSerifSC';}
+
+    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP_Remoter</title>
+	<script src="https://sdk.jinrishici.com/v2/browser/jinrishici.js" charset="utf-8"></script>
+    <meta name="color-scheme" content="light dark">
+</head>
+<body>
+    <h1><span id="jinrishici-sentence">正在加载今日诗词....</span></h1>
+    <span>
+    <label for="mode">模式选择：</label>
+    <select id="mode">
+        <option value="10">自动</option>
+        <option value="00">制冷</option>
+        <option value="01">抽湿</option>
+        <option value="11">制热</option>
+    </select>
+    <br><br>
+
+    <label for="temperature">温度（17℃-30℃）：</label>
+    <input type="number" id="temperature" min="17" max="30" value="26">
+    <br><br>
+
+    <label for="Fanspeed">风速选择：</label>
+    <select id="Fanspeed">
+        <option value="101">自动</option>
+        <option value="100">低风</option>
+        <option value="010">中风</option>
+        <option value="001">高风</option>
+    </select></span>
+    <br><br>
+
+    <button onclick="sendSettings()">发送设置</button>
+    <button onclick="fetchStatus()">获取当前状态</button>
+    <br><br>
+    <button onclick="TurnOff()">关机</button>
+
+    <h2 style="margin:10px 0px 10px 0px">空调状态(云端)</h2>
+    <p style="margin:0px 0px 0px 0px" id="current-status">尚未获取状态。</p>
+    <br>
+    <h2>终端连接状态:</h2>
+    <p style="margin:0px 0px 0px 0px" id="connect-status">尚未获取状态。</p>
+    <br>
+    <button id = "fetchConnectStatus" onclick = "fetchConnectStatus()">获取终端连接状态</button>
+
+    <script>
+        const REMOTE_IP = "xn--m7r112a038a.xn--7br062ccfl55p.top";
+        function updateUI()
+        {
+            const mode = document.getElementById("mode").value;
+            const temperatureInput = document.getElementById("temperature");
+            const fanSpeedSelect = document.getElementById("Fanspeed");
+            fetchStatus();
+            fetchConnectStatus();
+        }
+
+        function generateCode() 
+        {
+            const mode = document.getElementById("mode").value;
+            const temperature = document.getElementById("temperature").value;
+            let tempBits = "1101";
+            const tempMap = 
+            {
+                17: "0000", 18: "0001", 19: "0011", 20: "0010",
+                21: "0110", 22: "0111", 23: "0101", 24: "0100",
+                25: "1100", 26: "1101", 27: "1001", 28: "1000",
+                29: "1010", 30: "1011"
+            };
+            tempBits = tempMap[temperature];
+
+            let fanSpeed = document.getElementById("Fanspeed").value;
+            console.log("fanspeed:", fanSpeed);
+
+            const B = `${fanSpeed}11111`;
+            const C = `${tempBits}${mode}00`;
+            return `${B}${C}`;
+        }
+
+        function sendSettings()
+        {
+            const Code = generateCode();
+            console.log("编码：", Code);
+
+            fetch
+            (
+                `http://${REMOTE_IP}/send`,
+                {
+                    method: "POST",
+                    body: Code
+                }
+            )
+            .then
+            (
+                response =>
+                {
+                    if (response.status == 200)
+                    {
+                        alert("设置发送成功！");
+                        setTimeout(fetchStatus, 50);
+                    }
+                    else if (response.status == 503)
+                    {
+                        alert("发送失败\n远程设备尚未连接");
+                    }
+                }
+            );
+        }
+
+        function fetchStatus()
+        {
+            fetch(`http://${REMOTE_IP}/status`)
+            .then
+            (
+                response => response.json()
+            )
+            .then
+            (
+                data =>
+                {
+                    if("IsOff" in data)
+                    {
+                        document.getElementById("current-status").innerText = "已关机";
+                    }
+                    else
+                    {
+                        document.getElementById("current-status").innerText = `模式：${data.mode}\n温度：${data.temp}℃\n风速：${data.fan_speed}`;
+                    }
+                }
+            )
+            .catch
+            (
+                err =>
+                {
+                    console.error("获取状态失败：", err);
+                }
+            );
+        }
+
+        function TurnOff()
+        {
+            fetch
+            (`http://${REMOTE_IP}/send`,
+                {
+                    method: "POST",
+                    body: "0111101111100000"
+                }
+            )
+            .then
+            (
+                response =>
+                {
+                    if (response.status == 200)
+                    {
+                        alert("关机请求成功！");
+                        document.getElementById("current-status").innerText = "已关机"
+                    }
+                    else if(response.status == 503)
+                    {
+                        alert("关机失败\n远程设备尚未连接");
+                    }
+                }
+            );
+        }
+
+        function fetchConnectStatus()
+        {
+            fetch(`http://${REMOTE_IP}/connect_status`)
+            .then
+            (
+                response => response.text()
+            )
+            .then
+            (
+                data => 
+                {
+                    let isConnected = data.trim() === "1";
+                    let buttons = document.querySelectorAll("button:not(#fetchConnectStatus)");
+                    buttons.forEach
+                    (
+                        button => 
+                        {
+                            button.disabled = !isConnected; // 如果未连接，禁用按钮
+                        }
+                    );
+                    if(!isConnected) 
+                    {
+                        document.getElementById("connect-status").innerText = "未连接,遥控功能不可用";
+                    } 
+                    else 
+                    {
+                        document.getElementById("connect-status").innerText = "终端已连接至WebSocket";
+                    }
+                }
+            );
+        }
+        // 初始化界面
+        updateUI();
+    </script>
+</body>
+</html>

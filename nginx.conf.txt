@@ -1,0 +1,27 @@
+server
+{
+	listen 80;
+	server_name xn--m7r112a038a.xn--7br062ccfl55p.top;
+	location / 
+	{
+		root   D:\\webserver\\templates;
+            	index  index0.html;
+	}
+	location /send 
+	{
+		proxy_pass http://127.0.0.1:22222/send;
+	}
+	location /status 
+	{
+		proxy_pass http://127.0.0.1:22222/status;
+	}
+	location /connect_status {
+		proxy_pass http://127.0.0.1:22222/connect_status;
+	}
+	location ~* \.(woff|woff2|ttf|otf|eot)$ 
+	{
+		root   D:\\webserver\\templates;
+    		expires 1y;
+    		add_header Cache-Control "public";
+	}
+}
